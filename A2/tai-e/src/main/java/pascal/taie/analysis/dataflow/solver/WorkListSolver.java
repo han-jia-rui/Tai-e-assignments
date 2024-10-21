@@ -46,11 +46,10 @@ class WorkListSolver<Node, Fact> extends Solver<Node, Fact> {
             for (Node pred : cfg.getPredsOf(node)){
                 analysis.meetInto(result.getOutFact(pred), in);
             }
-            boolean changed = analysis.transferNode(node, in, out);
-            if (changed){
-                result.setOutFact(node, out);
+            if (analysis.transferNode(node, in, out))
                 worklist.addAll(cfg.getSuccsOf(node));
-            }
+            result.setInFact(node, in);
+            result.setOutFact(node, out);
         }
     }
 
