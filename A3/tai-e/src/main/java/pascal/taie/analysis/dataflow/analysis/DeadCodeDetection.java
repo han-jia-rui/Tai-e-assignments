@@ -33,20 +33,17 @@ import pascal.taie.analysis.graph.cfg.CFGBuilder;
 import pascal.taie.analysis.graph.cfg.Edge;
 import pascal.taie.config.AnalysisConfig;
 import pascal.taie.ir.IR;
-import pascal.taie.ir.exp.ArithmeticExp;
-import pascal.taie.ir.exp.ArrayAccess;
-import pascal.taie.ir.exp.CastExp;
-import pascal.taie.ir.exp.FieldAccess;
-import pascal.taie.ir.exp.NewExp;
-import pascal.taie.ir.exp.RValue;
-import pascal.taie.ir.exp.Var;
+import pascal.taie.ir.exp.*;
 import pascal.taie.ir.stmt.AssignStmt;
 import pascal.taie.ir.stmt.If;
 import pascal.taie.ir.stmt.Stmt;
 import pascal.taie.ir.stmt.SwitchStmt;
 
+import javax.swing.text.html.Option;
 import java.util.Comparator;
 import java.util.Set;
+import java.util.HashSet;
+import java.util.Stack;
 import java.util.TreeSet;
 
 public class DeadCodeDetection extends MethodAnalysis {
@@ -59,18 +56,71 @@ public class DeadCodeDetection extends MethodAnalysis {
 
     @Override
     public Set<Stmt> analyze(IR ir) {
-        // obtain CFG
         CFG<Stmt> cfg = ir.getResult(CFGBuilder.ID);
-        // obtain result of constant propagation
-        DataflowResult<Stmt, CPFact> constants =
-                ir.getResult(ConstantPropagation.ID);
-        // obtain result of live variable analysis
-        DataflowResult<Stmt, SetFact<Var>> liveVars =
-                ir.getResult(LiveVariableAnalysis.ID);
-        // keep statements (dead code) sorted in the resulting set
+        DataflowResult<Stmt, CPFact> constants = ir.getResult(ConstantPropagation.ID);
+        DataflowResult<Stmt, SetFact<Var>> liveVars = ir.getResult(LiveVariableAnalysis.ID);
+
         Set<Stmt> deadCode = new TreeSet<>(Comparator.comparing(Stmt::getIndex));
-        // TODO - finish me
-        // Your task is to recognize dead code in ir and add it to deadCode
+        Set<Stmt> visited = new HashSet<>();
+        Stack<Stmt> stack = new Stack<>();
+
+        stack.push(cfg.getEntry());
+        while (!stack.empty()) {
+            Stmt current = stack.pop();
+            if (visited.contains(current))
+                continue;
+            visited.add(current);
+
+            if (current instanceof AssignStmt<?, ?> assignStmt) {
+                RValue rValue = assignStmt.getRValue();
+                LValue lValue = assignStmt.getLValue();
+                SetFact<Var> lvFact = liveVars.getOutFact(current);
+                if (lValue instanceof Var variable && hasNoSideEffect(rValue)
+                        && !lvFact.contains(variable))
+                    deadCode.add(current);
+            }
+
+            if (current instanceof If ifStmt) {
+                CPFact cpFact = constants.getOutFact(current);
+                Value value = ConstantPropagation.evaluate(ifStmt.getCondition(), cpFact);
+                if (value.isConstant()) {
+                    int constant = value.getConstant();
+                    for (Edge<Stmt> edge : cfg.getOutEdgesOf(current)) {
+                        if (constant == 1 && edge.getKind() == Edge.Kind.IF_TRUE)
+                            stack.push(edge.getTarget());
+                        if (constant == 0 && edge.getKind() == Edge.Kind.IF_FALSE)
+                            stack.push(edge.getTarget());
+                    }
+                    continue;
+                }
+            }
+
+            if (current instanceof SwitchStmt switchStmt) {
+                CPFact cpFact = constants.getOutFact(current);
+                Value value = cpFact.get(switchStmt.getVar());
+                if (value.isConstant()) {
+                    int constant = value.getConstant();
+                    boolean match = false;
+                    for (var caseTargets : switchStmt.getCaseTargets())
+                        if (constant == caseTargets.first()) {
+                            match = true;
+                            stack.push(caseTargets.second());
+                            break;
+                        }
+                    if (!match)
+                        stack.push(switchStmt.getDefaultTarget());
+                    continue;
+                }
+            }
+            for (var next : cfg.getSuccsOf(current))
+                if (!visited.contains(next))
+                    stack.push(next);
+        }
+        for (var stmt : ir.getStmts()) {
+            if (!visited.contains(stmt)) {
+                deadCode.add(stmt);
+            }
+        }
         return deadCode;
     }
 
