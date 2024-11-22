@@ -119,7 +119,6 @@ class Solver {
      * Processes work-list entries until the work-list is empty.
      */
     private void analyze() {
-        // TODO - finish me
         while (!workList.isEmpty()) {
             WorkList.Entry entry = workList.pollEntry();
             PointsToSet diff = propagate(entry.pointer(), entry.pointsToSet());
@@ -168,7 +167,7 @@ class Solver {
         });
         if (!diff.isEmpty()) {
             for (var succ : pointerFlowGraph.getSuccsOf(pointer)) {
-                workList.addEntry(succ, pointsToSet);
+                workList.addEntry(succ, diff);
             }
         }
         return diff;
