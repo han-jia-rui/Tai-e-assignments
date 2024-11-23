@@ -225,8 +225,8 @@ class Solver {
         while (!workList.isEmpty()) {
             WorkList.Entry entry = workList.pollEntry();
             PointsToSet diff = propagate(entry.pointer(), entry.pointsToSet());
-            if (diff == null)
-                return;
+            if (diff.isEmpty())
+                continue;
             if (entry.pointer() instanceof CSVar csVar) {
                 Var variable = csVar.getVar();
                 Context varContext = csVar.getContext();

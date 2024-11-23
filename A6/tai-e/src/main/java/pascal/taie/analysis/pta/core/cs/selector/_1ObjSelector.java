@@ -37,20 +37,6 @@ import java.util.List;
  * Implementation of 1-object sensitivity.
  */
 public class _1ObjSelector implements ContextSelector {
-    private final int maxDepth = 1;
-
-    private Context addObj(Context context, Obj obj) {
-        List<Object> elements = new ArrayList<>();
-        if (context.getLength() < maxDepth && context.getLength() > 0) {
-            elements.add(context.getElementAt(0));
-        }
-        for (int i = 1; i < context.getLength(); i++) {
-            elements.add(context.getElementAt(i));
-        }
-        elements.add(obj);
-        return ListContext.make(elements.toArray());
-    }
-
     @Override
     public Context getEmptyContext() {
         return ListContext.make();
@@ -63,7 +49,7 @@ public class _1ObjSelector implements ContextSelector {
 
     @Override
     public Context selectContext(CSCallSite callSite, CSObj recv, JMethod callee) {
-        return addObj(recv.getContext(), recv.getObject());
+        return ListContext.make(recv.getObject());
     }
 
     @Override

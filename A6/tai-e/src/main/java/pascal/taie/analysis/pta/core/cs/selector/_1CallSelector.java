@@ -38,20 +38,6 @@ import java.util.List;
  * Implementation of 1-call-site sensitivity.
  */
 public class _1CallSelector implements ContextSelector {
-    private final int maxDepth = 1;
-
-    private Context addCallSite(Context context, Invoke callSite) {
-        List<Object> elements = new ArrayList<>();
-        if (context.getLength() < maxDepth && context.getLength() > 0) {
-            elements.add(context.getElementAt(0));
-        }
-        for (int i = 1; i < context.getLength(); i++) {
-            elements.add(context.getElementAt(i));
-        }
-        elements.add(callSite);
-        return ListContext.make(elements.toArray());
-    }
-
     @Override
     public Context getEmptyContext() {
         return ListContext.make();
@@ -59,12 +45,12 @@ public class _1CallSelector implements ContextSelector {
 
     @Override
     public Context selectContext(CSCallSite callSite, JMethod callee) {
-        return addCallSite(callSite.getContext(), callSite.getCallSite());
+        return ListContext.make(callSite.getCallSite());
     }
 
     @Override
     public Context selectContext(CSCallSite callSite, CSObj recv, JMethod callee) {
-        return addCallSite(callSite.getContext(), callSite.getCallSite());
+        return ListContext.make(callSite.getCallSite());
     }
 
     @Override

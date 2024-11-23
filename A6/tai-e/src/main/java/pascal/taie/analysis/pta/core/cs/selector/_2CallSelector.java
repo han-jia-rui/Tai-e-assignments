@@ -38,16 +38,11 @@ import java.util.List;
  * Implementation of 2-call-site sensitivity.
  */
 public class _2CallSelector implements ContextSelector {
-    private final int maxDepth = 2;
 
     private Context addCallSite(Context context, Invoke callSite) {
         List<Object> elements = new ArrayList<>();
-        if (context.getLength() < maxDepth && context.getLength() > 0) {
-            elements.add(context.getElementAt(0));
-        }
-        for (int i = 1; i < context.getLength(); i++) {
-            elements.add(context.getElementAt(i));
-        }
+        if (context.getLength() > 0)
+            elements.add(context.getElementAt(context.getLength() - 1));
         elements.add(callSite);
         return ListContext.make(elements.toArray());
     }
