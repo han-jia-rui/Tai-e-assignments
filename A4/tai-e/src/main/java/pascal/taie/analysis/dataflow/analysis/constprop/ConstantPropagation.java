@@ -113,6 +113,116 @@ public class ConstantPropagation extends
         return false;
     }
 
+    private static class ExpProcessor implements ExpVisitor<Value> {
+        CPFact in;
+
+        public ExpProcessor(CPFact in) {
+            this.in = in;
+        }
+
+        @Override
+        public Value visitDefault(Exp exp) {
+            return Value.getNAC();
+        }
+
+        @Override
+        public Value visit(IntLiteral literal) {
+            return Value.makeConstant(literal.getValue());
+        }
+
+        @Override
+        public Value visit(Var var) {
+            return in.get(var);
+        }
+
+        @Override
+        public Value visit(ConditionExp exp) {
+            var v1 = in.get(exp.getOperand1());
+            var v2 = in.get(exp.getOperand2());
+            if (v1.isConstant() && v2.isConstant()) {
+                int value1 = v1.getConstant();
+                int value2 = v2.getConstant();
+                return switch (exp.getOperator()) {
+                    case EQ -> Value.makeConstant(value1 == value2 ? 1 : 0);
+                    case NE -> Value.makeConstant(value1 != value2 ? 1 : 0);
+                    case LT -> Value.makeConstant(value1 < value2 ? 1 : 0);
+                    case LE -> Value.makeConstant(value1 <= value2 ? 1 : 0);
+                    case GT -> Value.makeConstant(value1 > value2 ? 1 : 0);
+                    case GE -> Value.makeConstant(value1 >= value2 ? 1 : 0);
+                };
+            }
+            if (v1.isNAC() || v2.isNAC()) {
+                return Value.getNAC();
+            }
+            return Value.getUndef();
+        }
+
+        @Override
+        public Value visit(ShiftExp exp) {
+            var v1 = in.get(exp.getOperand1());
+            var v2 = in.get(exp.getOperand2());
+            if (v1.isConstant() && v2.isConstant()) {
+                int value1 = v1.getConstant();
+                int value2 = v2.getConstant();
+                return switch (exp.getOperator()) {
+                    case SHL -> Value.makeConstant(value1 << value2);
+                    case SHR -> Value.makeConstant(value1 >> value2);
+                    case USHR -> Value.makeConstant(value1 >>> value2);
+                };
+            }
+            if (v1.isNAC() || v2.isNAC()) {
+                return Value.getNAC();
+            }
+            return Value.getUndef();
+        }
+
+        @Override
+        public Value visit(BitwiseExp exp) {
+            var v1 = in.get(exp.getOperand1());
+            var v2 = in.get(exp.getOperand2());
+            if (v1.isConstant() && v2.isConstant()) {
+                int value1 = v1.getConstant();
+                int value2 = v2.getConstant();
+                return switch (exp.getOperator()) {
+                    case AND -> Value.makeConstant(value1 & value2);
+                    case OR -> Value.makeConstant(value1 | value2);
+                    case XOR -> Value.makeConstant(value1 ^ value2);
+                };
+            }
+            if (v1.isNAC() || v2.isNAC()) {
+                return Value.getNAC();
+            }
+            return Value.getUndef();
+        }
+
+        @Override
+        public Value visit(ArithmeticExp exp) {
+            var v1 = in.get(exp.getOperand1());
+            var v2 = in.get(exp.getOperand2());
+            if (v2.isConstant() && v2.getConstant() == 0) {
+                var op = exp.getOperator();
+                if (op == ArithmeticExp.Op.DIV || op == ArithmeticExp.Op.REM) {
+                    return Value.getUndef();
+                }
+            }
+            if (v1.isConstant() && v2.isConstant()) {
+                int value1 = v1.getConstant();
+                int value2 = v2.getConstant();
+                return switch (exp.getOperator()) {
+                    case ADD -> Value.makeConstant(value1 + value2);
+                    case SUB -> Value.makeConstant(value1 - value2);
+                    case MUL -> Value.makeConstant(value1 * value2);
+                    case DIV -> Value.makeConstant(value1 / value2);
+                    case REM -> Value.makeConstant(value1 % value2);
+                };
+            }
+            if (v1.isNAC() || v2.isNAC()) {
+                return Value.getNAC();
+            }
+            return Value.getUndef();
+        }
+    }
+
     /**
      * Evaluates the {@link Value} of given expression.
      *
@@ -121,73 +231,6 @@ public class ConstantPropagation extends
      * @return the resulting {@link Value}
      */
     public static Value evaluate(Exp exp, CPFact in) {
-        if (exp instanceof IntLiteral intLiteral) {
-            return Value.makeConstant(intLiteral.getValue());
-        }
-        if (exp instanceof Var variable) {
-            return in.get(variable);
-        }
-        if (exp instanceof BinaryExp binaryExp) {
-            var v1 = binaryExp.getOperand1();
-            var v2 = binaryExp.getOperand2();
-
-            if (exp instanceof ArithmeticExp arithmeticExp && in.get(v2).isConstant()) {
-                var op = arithmeticExp.getOperator();
-                if (op == ArithmeticExp.Op.DIV || op == ArithmeticExp.Op.REM) {
-                    if (in.get(v2).getConstant() == 0) {
-                        return Value.getUndef();
-                    }
-                }
-            }
-
-            if (in.get(v1).isConstant() && in.get(v2).isConstant()) {
-                int value1 = in.get(v1).getConstant();
-                int value2 = in.get(v2).getConstant();
-                if (exp instanceof ArithmeticExp arithmeticExp) {
-                    var op = arithmeticExp.getOperator();
-                    return switch (op) {
-                        case ADD -> Value.makeConstant(value1 + value2);
-                        case SUB -> Value.makeConstant(value1 - value2);
-                        case MUL -> Value.makeConstant(value1 * value2);
-                        case DIV -> Value.makeConstant(value1 / value2);
-                        case REM -> Value.makeConstant(value1 % value2);
-                    };
-                }
-                if (exp instanceof ConditionExp conditionExp) {
-                    var op = conditionExp.getOperator();
-                    return switch (op) {
-                        case EQ -> Value.makeConstant(value1 == value2 ? 1 : 0);
-                        case NE -> Value.makeConstant(value1 != value2 ? 1 : 0);
-                        case LT -> Value.makeConstant(value1 < value2 ? 1 : 0);
-                        case LE -> Value.makeConstant(value1 <= value2 ? 1 : 0);
-                        case GT -> Value.makeConstant(value1 > value2 ? 1 : 0);
-                        case GE -> Value.makeConstant(value1 >= value2 ? 1 : 0);
-                    };
-                }
-                if (exp instanceof ShiftExp shiftExp) {
-                    var op = shiftExp.getOperator();
-                    return switch (op) {
-                        case SHL -> Value.makeConstant(value1 << value2);
-                        case SHR -> Value.makeConstant(value1 >> value2);
-                        case USHR -> Value.makeConstant(value1 >>> value2);
-                    };
-                }
-                if (exp instanceof BitwiseExp bitwiseExp) {
-                    var op = bitwiseExp.getOperator();
-                    return switch (op) {
-                        case AND -> Value.makeConstant(value1 & value2);
-                        case OR -> Value.makeConstant(value1 | value2);
-                        case XOR -> Value.makeConstant(value1 ^ value2);
-                    };
-                }
-            }
-
-            if (in.get(v1).isNAC() || in.get(v2).isNAC()) {
-                return Value.getNAC();
-            }
-
-            return Value.getUndef();
-        }
-        return Value.getNAC();
+        return exp.accept(new ExpProcessor(in));
     }
 }
