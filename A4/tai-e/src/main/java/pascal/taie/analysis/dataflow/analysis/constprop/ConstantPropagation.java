@@ -88,13 +88,11 @@ public class ConstantPropagation extends
         if (stmt instanceof DefinitionStmt<?, ?> def) {
             var lhs = def.getLValue();
             var rhs = def.getRValue();
-            if (lhs instanceof Var && canHoldInt((Var) lhs)) {
-                newOut.update((Var) lhs, evaluate(rhs, in));
+            if (lhs instanceof Var lVar && canHoldInt(lVar)) {
+                newOut.update(lVar, evaluate(rhs, in));
             }
         }
-        var changed = !newOut.equals(out);
-        out.copyFrom(newOut);
-        return changed;
+        return out.copyFrom(newOut);
     }
 
     /**
@@ -123,18 +121,18 @@ public class ConstantPropagation extends
      * @return the resulting {@link Value}
      */
     public static Value evaluate(Exp exp, CPFact in) {
-        if (exp instanceof IntLiteral) {
-            return Value.makeConstant(((IntLiteral) exp).getValue());
+        if (exp instanceof IntLiteral intLiteral) {
+            return Value.makeConstant(intLiteral.getValue());
         }
-        if (exp instanceof Var) {
-            return in.get((Var) exp);
+        if (exp instanceof Var variable) {
+            return in.get(variable);
         }
-        if (exp instanceof BinaryExp) {
-            var v1 = ((BinaryExp) exp).getOperand1();
-            var v2 = ((BinaryExp) exp).getOperand2();
+        if (exp instanceof BinaryExp binaryExp) {
+            var v1 = binaryExp.getOperand1();
+            var v2 = binaryExp.getOperand2();
 
-            if (exp instanceof ArithmeticExp && in.get(v2).isConstant()) {
-                var op = ((ArithmeticExp) exp).getOperator();
+            if (exp instanceof ArithmeticExp arithmeticExp && in.get(v2).isConstant()) {
+                var op = arithmeticExp.getOperator();
                 if (op == ArithmeticExp.Op.DIV || op == ArithmeticExp.Op.REM) {
                     if (in.get(v2).getConstant() == 0) {
                         return Value.getUndef();
@@ -145,8 +143,8 @@ public class ConstantPropagation extends
             if (in.get(v1).isConstant() && in.get(v2).isConstant()) {
                 int value1 = in.get(v1).getConstant();
                 int value2 = in.get(v2).getConstant();
-                if (exp instanceof ArithmeticExp) {
-                    var op = ((ArithmeticExp) exp).getOperator();
+                if (exp instanceof ArithmeticExp arithmeticExp) {
+                    var op = arithmeticExp.getOperator();
                     return switch (op) {
                         case ADD -> Value.makeConstant(value1 + value2);
                         case SUB -> Value.makeConstant(value1 - value2);
@@ -155,8 +153,8 @@ public class ConstantPropagation extends
                         case REM -> Value.makeConstant(value1 % value2);
                     };
                 }
-                if (exp instanceof ConditionExp) {
-                    var op = ((ConditionExp) exp).getOperator();
+                if (exp instanceof ConditionExp conditionExp) {
+                    var op = conditionExp.getOperator();
                     return switch (op) {
                         case EQ -> Value.makeConstant(value1 == value2 ? 1 : 0);
                         case NE -> Value.makeConstant(value1 != value2 ? 1 : 0);
@@ -166,16 +164,16 @@ public class ConstantPropagation extends
                         case GE -> Value.makeConstant(value1 >= value2 ? 1 : 0);
                     };
                 }
-                if (exp instanceof ShiftExp) {
-                    var op = ((ShiftExp) exp).getOperator();
+                if (exp instanceof ShiftExp shiftExp) {
+                    var op = shiftExp.getOperator();
                     return switch (op) {
                         case SHL -> Value.makeConstant(value1 << value2);
                         case SHR -> Value.makeConstant(value1 >> value2);
                         case USHR -> Value.makeConstant(value1 >>> value2);
                     };
                 }
-                if (exp instanceof BitwiseExp) {
-                    var op = ((BitwiseExp) exp).getOperator();
+                if (exp instanceof BitwiseExp bitwiseExp) {
+                    var op = bitwiseExp.getOperator();
                     return switch (op) {
                         case AND -> Value.makeConstant(value1 & value2);
                         case OR -> Value.makeConstant(value1 | value2);
@@ -184,13 +182,12 @@ public class ConstantPropagation extends
                 }
             }
 
-            if (in.get(v1).isNAC() || in.get(v2).isNAC()){
+            if (in.get(v1).isNAC() || in.get(v2).isNAC()) {
                 return Value.getNAC();
             }
 
             return Value.getUndef();
         }
-
         return Value.getNAC();
     }
 }
