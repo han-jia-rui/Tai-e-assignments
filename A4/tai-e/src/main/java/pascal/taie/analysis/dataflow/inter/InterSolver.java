@@ -28,7 +28,6 @@ import pascal.taie.analysis.graph.icfg.ICFG;
 import pascal.taie.analysis.graph.icfg.ICFGEdge;
 import pascal.taie.util.collection.SetQueue;
 
-import java.util.LinkedList;
 import java.util.Queue;
 
 /**
@@ -71,22 +70,19 @@ class InterSolver<Method, Node, Fact> {
     }
 
     private void doSolve() {
-        workList = new LinkedList<>();
+        workList = new SetQueue<>();
         workList.addAll(icfg.getNodes());
         while (!workList.isEmpty()) {
-            Node node = workList.iterator().next();
-            workList.remove(node);
+            Node node = workList.poll();
             Fact in = analysis.newInitialFact();
             Fact out = result.getOutFact(node);
             for (var edge : icfg.getInEdgesOf(node)) {
-                Node pred = edge.getSource();
-                analysis.meetInto(
-                        analysis.transferEdge(edge, result.getOutFact(pred)),
-                        in
-                );
+                Fact predOut = result.getOutFact(edge.getSource());
+                analysis.meetInto(analysis.transferEdge(edge, predOut), in);
             }
-            if (analysis.transferNode(node, in, out))
+            if (analysis.transferNode(node, in, out)) {
                 workList.addAll(icfg.getSuccsOf(node));
+            }
             result.setInFact(node, in);
             result.setOutFact(node, out);
         }

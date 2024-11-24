@@ -82,9 +82,7 @@ public class InterConstantPropagation extends
 
     @Override
     protected boolean transferCallNode(Stmt stmt, CPFact in, CPFact out) {
-        boolean changed = !out.equals(in);
-        out.copyFrom(in);
-        return changed;
+        return out.copyFrom(in);
     }
 
     @Override
@@ -100,7 +98,6 @@ public class InterConstantPropagation extends
     @Override
     protected CPFact transferCallToReturnEdge(CallToReturnEdge<Stmt> edge, CPFact out) {
         CPFact newOut = out.copy();
-        assert edge.getSource() instanceof Invoke;
         Var result = ((Invoke) edge.getSource()).getResult();
         if (result != null)
             newOut.remove(result);
@@ -110,10 +107,8 @@ public class InterConstantPropagation extends
     @Override
     protected CPFact transferCallEdge(CallEdge<Stmt> edge, CPFact callSiteOut) {
         CPFact newOut = cp.newInitialFact();
-        assert edge.getSource() instanceof Invoke;
         List<Var> args = ((Invoke) edge.getSource()).getInvokeExp().getArgs();
         List<Var> params = edge.getCallee().getIR().getParams();
-        assert args.size() == params.size();
         for (int i = 0; i < args.size(); i++) {
             Var arg = args.get(i);
             Var param = params.get(i);
@@ -126,7 +121,6 @@ public class InterConstantPropagation extends
     @Override
     protected CPFact transferReturnEdge(ReturnEdge<Stmt> edge, CPFact returnOut) {
         CPFact newOut = cp.newInitialFact();
-        assert edge.getCallSite() instanceof Invoke;
         Var result = ((Invoke) edge.getCallSite()).getResult();
         if (result != null) {
             Collection<Var> retVars = edge.getReturnVars();
