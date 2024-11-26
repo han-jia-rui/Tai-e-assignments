@@ -143,7 +143,6 @@ public class Solver {
             this.context = csMethod.getContext();
         }
 
-        // TODO - check me
         @Override
         public Void visit(New stmt) {
             Obj obj = heapModel.getObj(stmt);
@@ -180,7 +179,7 @@ public class Solver {
         public Void visit(StoreField stmt) {
             if (stmt.isStatic()) {
                 JField field = stmt.getFieldRef().resolve();
-                Pointer source = csManager.getCSVar(context,stmt.getRValue());
+                Pointer source = csManager.getCSVar(context, stmt.getRValue());
                 Pointer target = csManager.getStaticField(field);
                 addPFGEdge(source, target);
             }
@@ -189,6 +188,11 @@ public class Solver {
 
         @Override
         public Void visit(Invoke stmt) {
+            PointsToSet taintPts = taintAnalysis.checkSource(stmt);
+            if (!taintPts.isEmpty()) {
+                Pointer source = csManager.getCSVar(context, stmt.getResult());
+                workList.addEntry(source, taintPts);
+            }
             if (stmt.isStatic()) {
                 CSCallSite csCallSite = csManager.getCSCallSite(context, stmt);
 
@@ -198,32 +202,42 @@ public class Solver {
 
                 if (callGraph.addEdge(new Edge<>(CallGraphs.getCallKind(stmt), csCallSite, csTargetMethod))) {
                     addReachable(csTargetMethod);
-                    invokeMethod(csCallSite, csTargetMethod);
+                    invokeMethod(csCallSite, csTargetMethod, null);
                 }
             }
             return null;
         }
     }
 
-    private void invokeMethod(CSCallSite csCallSite, CSMethod csMethod) {
+    private void invokeMethod(CSCallSite csCallSite, CSMethod csMethod, CSVar base) {
         Context callContext = csCallSite.getContext();
         Context methodContext = csMethod.getContext();
+
+        Invoke callSite = csCallSite.getCallSite();
+        Var callResult = csCallSite.getCallSite().getResult();
+        CSVar result = callResult != null ? csManager.getCSVar(callContext, callResult) : null;
+        if (base != null && result != null)
+            taintAnalysis.checkBaseToResult(callSite, base, result);
 
         List<Var> args = csCallSite.getCallSite().getInvokeExp().getArgs();
         List<Var> params = csMethod.getMethod().getIR().getParams();
         assert args.size() == params.size();
         for (int i = 0; i < args.size(); i++) {
-            Pointer source = csManager.getCSVar(callContext, args.get(i));
-            Pointer target = csManager.getCSVar(methodContext, params.get(i));
+            CSVar source = csManager.getCSVar(callContext, args.get(i));
+            CSVar target = csManager.getCSVar(methodContext, params.get(i));
             addPFGEdge(source, target);
+            taintAnalysis.checkSink(csCallSite.getCallSite(), i, source);
+            if (result != null)
+                taintAnalysis.checkArgToResult(callSite, i, source, result);
+            if (base != null)
+                taintAnalysis.checkArgToBase(callSite, i, source, base);
         }
 
-        Var callResult = csCallSite.getCallSite().getResult();
         if (callResult != null) {
             List<Var> rets = csMethod.getMethod().getIR().getReturnVars();
-            Pointer target = csManager.getCSVar(callContext, callResult);
+            CSVar target = csManager.getCSVar(callContext, callResult);
             for (Var ret : rets) {
-                Pointer source = csManager.getCSVar(methodContext, ret);
+                CSVar source = csManager.getCSVar(methodContext, ret);
                 addPFGEdge(source, target);
             }
         }
@@ -241,11 +255,14 @@ public class Solver {
         }
     }
 
+    public void addEntry(Pointer pointer, PointsToSet pointsToSet) {
+        workList.addEntry(pointer, pointsToSet);
+    }
+
     /**
      * Processes work-list entries until the work-list is empty.
      */
     private void analyze() {
-        // TODO - check me
         while (!workList.isEmpty()) {
             WorkList.Entry entry = workList.pollEntry();
             PointsToSet diff = propagate(entry.pointer(), entry.pointsToSet());
@@ -257,7 +274,7 @@ public class Solver {
                 for (var csObj : diff) {
                     variable.getStoreFields().forEach(stmt -> {
                         Pointer source = csManager.getCSVar(varContext, stmt.getRValue());
-                        Pointer target = csManager.getInstanceField(csObj,stmt.getFieldRef().resolve());
+                        Pointer target = csManager.getInstanceField(csObj, stmt.getFieldRef().resolve());
                         addPFGEdge(source, target);
                     });
                     variable.getLoadFields().forEach(stmt -> {
@@ -286,7 +303,6 @@ public class Solver {
      * returns the difference set of pointsToSet and pt(pointer).
      */
     private PointsToSet propagate(Pointer pointer, PointsToSet pointsToSet) {
-        // TODO - check me
         PointsToSet diff = PointsToSetFactory.make();
         pointsToSet.forEach(obj -> {
             if (!pointer.getPointsToSet().contains(obj)) {
@@ -297,6 +313,7 @@ public class Solver {
         if (!diff.isEmpty()) {
             for (var succ : pointerFlowGraph.getSuccsOf(pointer))
                 workList.addEntry(succ, diff);
+            taintAnalysis.propagateTaint(pointer, diff);
         }
         return diff;
     }
@@ -304,11 +321,10 @@ public class Solver {
     /**
      * Processes instance calls when points-to set of the receiver variable changes.
      *
-     * @param csVar    the receiver variable
+     * @param csVar   the receiver variable
      * @param recvObj set of new discovered objects pointed by the variable.
      */
     private void processCall(CSVar csVar, CSObj recvObj) {
-        // TODO - check me
         Context callContext = csVar.getContext();
         csVar.getVar().getInvokes().forEach(stmt -> {
             CSCallSite csCallSite = csManager.getCSCallSite(callContext, stmt);
@@ -322,7 +338,7 @@ public class Solver {
 
             if (callGraph.addEdge(new Edge<>(CallGraphs.getCallKind(stmt), csCallSite, csTargetMethod))) {
                 addReachable(csTargetMethod);
-                invokeMethod(csCallSite, csTargetMethod);
+                invokeMethod(csCallSite, csTargetMethod, csVar);
             }
         });
     }
@@ -330,8 +346,8 @@ public class Solver {
     /**
      * Resolves the callee of a call site with the receiver object.
      *
-     * @param recv the receiver object of the method call. If the callSite
-     *             is static, this parameter is ignored (i.e., can be null).
+     * @param recv     the receiver object of the method call. If the callSite
+     *                 is static, this parameter is ignored (i.e., can be null).
      * @param callSite the call site to be resolved.
      * @return the resolved callee.
      */
