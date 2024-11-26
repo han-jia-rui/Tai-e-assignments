@@ -104,7 +104,7 @@ class Solver {
         if (callGraph.contains(csMethod)) return;
         callGraph.addReachableMethod(csMethod);
         StmtProcessor stmtProcessor = new StmtProcessor(csMethod);
-        csMethod.getMethod().getIR().getStmts().forEach(stmt -> stmt.accept(stmtProcessor));
+        csMethod.getMethod().getIR().forEach(stmt -> stmt.accept(stmtProcessor));
     }
 
     /**
